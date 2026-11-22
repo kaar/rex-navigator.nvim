@@ -1,0 +1,163 @@
+*rex-navigator.txt*  Seamless navigation between Neovim splits and Rex panes
+
+Author:  Caspar Nettelbladt
+License: MIT
+
+==============================================================================
+CONTENTS                                                *rex-navigator-contents*
+
+  1. Introduction ........................... |rex-navigator-introduction|
+  2. Requirements ........................... |rex-navigator-requirements|
+  3. Installation ........................... |rex-navigator-installation|
+  4. Mappings ............................... |rex-navigator-mappings|
+  5. Health ................................. |rex-navigator-health|
+  6. Development ............................ |rex-navigator-development|
+
+==============================================================================
+1. INTRODUCTION                                     *rex-navigator-introduction*
+
+rex-navigator.nvim ports the vim-tmux-navigator pattern to Rex
+(https://www.superlogical.com/rex): a single set of `ctrl+h/j/k/l` chords
+moves between Neovim windows and Rex panes as if they were one layout.
+
+It is a two-sided handshake:
+
+- The Rex half owns the direct chords. It is `rex/rex-navigator.lua`, loaded
+  from the Rex config. Each chord runs a Lua function in the Rex server. If
+  the foreground process of the target block is Neovim, the function
+  returns `false` and Rex delivers the key to that block. Rex picks the
+  block before the function runs, so the key cannot land in another pane.
+  Other processes, including Vim, get pane navigation.
+- The Neovim half tries Neovim windows first. At the layout edge, it
+  asynchronously runs >sh
+    rex --autostart=false do -s $REX_SESSION -b $REX_BLOCK rex_navigator_<dir>
+<
+  The action only performs pane navigation and never passes keys through.
+  This prevents a loop back into Neovim.
+
+                                                     *rex-navigator-pane-navigation*
+Pane navigation moves focus only when the source block is still the focused
+block of the active window. A stale or repeated handoff does nothing. It then
+calls `session.focus_direction` with `wrap = false`, so focus stops at the
+outer layout edge. A failed API call raises an error, so `rex do` exits
+nonzero and Neovim reports it.
+
+Detection reads the foreground process name only. It matches `nvim` and
+`nvimdiff`, regardless of case, with an optional leading `.` and trailing
+`-wrapped`. A failed process lookup counts as "not Neovim".
+Launch Neovim directly or with `exec` so it is the foreground process.
+
+The plugin is a no-op unless nvim runs inside a Rex pane ($REX_SESSION and
+$REX_BLOCK are nonempty).
+
+Note: tmux inside a Rex pane is not supported. Rex owns the `ctrl+h/j/k/l`
+chords and passes them only to Neovim, so they never reach a nested
+tmux session (or vim-tmux-navigator inside it).
+
+==============================================================================
+2. REQUIREMENTS                                     *rex-navigator-requirements*
+
+- Neovim >= 0.10 (|vim.system()|; also negotiates the kitty keyboard
+  protocol, which keeps `<C-h>` distinct from `<BS>`).
+- Rex with `wrap` support in `session.focus_direction` (tested with
+  0.1.0-preview.21). Older servers ignore `wrap` and always wrap.
+- Both halves from the same checkout. The Rex config must load the companion.
+  Neovim edge navigation requires its actions. See
+  |rex-navigator-installation|.
+
+==============================================================================
+3. INSTALLATION                                     *rex-navigator-installation*
+
+Install the Neovim plugin first. With vim.pack (Neovim >= 0.12): >lua
+    vim.pack.add({ "https://github.com/kaar/rex-navigator.nvim" })
+<
+After the plugin loads, run this in Neovim: >vim
+    :lua print(vim.api.nvim_get_runtime_file('rex/rex-navigator.lua', false)[1])
+<
+Add this to `~/.config/rex/init.lua`. Replace the example path with the
+printed path: >lua
+    local ok, err = pcall(function()
+      dofile("/absolute/path/to/rex-navigator.nvim/rex/rex-navigator.lua").setup()
+    end)
+    if not ok then
+      rex.log("warn", "rex-navigator not loaded: " .. tostring(err))
+    end
+<
+If the file is missing or `setup()` fails, Rex logs a warning and continues
+loading its configuration.
+
+`setup()` defines the actions `rex_navigator_left`, `rex_navigator_down`,
+`rex_navigator_up`, and `rex_navigator_right`, and binds `ctrl+h/j/k/l` to
+Lua functions. Remove any other bindings for these chords, such as
+`pane.focus`. Shortcuts set in the Rex app override `init.lua`.
+
+Run `rex config check` and `rex config reload`. Then run
+`:checkhealth rex-navigator` from Neovim inside Rex. See |rex-navigator-health|.
+
+==============================================================================
+4. MAPPINGS                                             *rex-navigator-mappings*
+
+When active, the plugin creates normal-mode mappings:
+
+  `<C-h>`   window left,  or Rex pane left at the edge
+  `<C-j>`   window below, or Rex pane below at the edge
+  `<C-k>`   window above, or Rex pane above at the edge
+  `<C-l>`   window right, or Rex pane right at the edge
+
+To send `ctrl+l` to the shell without moving focus, add this optional
+binding to `~/.config/rex/init.lua`: >lua
+    rex.bind("ctrl+space>ctrl+l", "pane.send_key", { key = "ctrl+l" })
+<
+Reload the Rex configuration. Press `ctrl+space`, then `ctrl+l` to clear
+the screen.
+
+==============================================================================
+5. HEALTH                                                 *rex-navigator-health*
+
+Run `:checkhealth rex-navigator`.
+
+The health check reports:
+
+- whether the plugin is active ($REX_SESSION and $REX_BLOCK), with a
+  warning when $TMUX is set,
+- whether `rex` is executable on Neovim's $PATH,
+- whether the server answers `rex --autostart=false whoami --json`,
+- whether `rex --autostart=false actions` lists the four
+  `rex_navigator_*` actions.
+
+If edge navigation fails, Neovim shows the `rex do` error. A missing
+companion shows as "no action named rex_navigator_<dir>". Load the companion
+in the Rex config and run `rex config reload`. A failure to start `rex`
+is reported once per session.
+
+If keys in a shell type characters instead of moving focus, the companion is
+not loaded or another binding owns the key. Check `rex keymap` and the
+shortcuts set in the Rex app.
+
+If a key does not work in Neovim, run `:verbose nmap <C-h>` to see what sets
+that mapping. Replace `<C-h>` with the key that does not work.
+
+If keys in Neovim move Rex panes instead of windows, Neovim is not the
+foreground process. Launch it directly or with `exec`.
+
+==============================================================================
+6. DEVELOPMENT                                       *rex-navigator-development*
+
+To test a local checkout, point `dofile()` in the Rex configuration to
+the checkout's `rex/rex-navigator.lua`. Check and reload the configuration: >sh
+    rex config check
+    rex config reload
+<
+List the registered navigation actions: >sh
+    rex actions | grep rex_navigator
+<
+To test a pane move directly, replace `<block>` with the ID of the focused
+pane in the active window: >sh
+    rex do -b <block> rex_navigator_right
+<
+This action moves focus without sending a key to the pane. To test with a
+separate configuration file without reloading Rex, use: >sh
+    rex do ./my-init.lua --action rex_navigator_right -b <block>
+<
+
+ vim:tw=78:ts=8:ft=help:norl:
