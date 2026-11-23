@@ -13,6 +13,10 @@
 local M = {}
 
 local terminal = "com.superlogical.terminal"
+local history_limit = 256
+local history = {}
+local edge_tolerance = 1e-6
+local direction_axes = { left = 1, right = 1, up = 2, down = 2 }
 
 M.directions = { "left", "down", "up", "right" }
 
@@ -39,17 +43,79 @@ local function passes_through(block_id)
   return type(foreground) == "table" and M.is_nvim(foreground.name)
 end
 
-local function active_focused_block(view)
+local function active_window(view)
   for _, window in ipairs(view.windows or {}) do
     if window.window_id ~= nil and window.window_id == view.active_window_id then
-      return window.focused_block_id
+      return window
+    end
+  end
+end
+
+local function remember(block_id)
+  for i, id in ipairs(history) do
+    if id == block_id then
+      table.remove(history, i)
+      break
+    end
+  end
+  table.insert(history, 1, block_id)
+  history[history_limit + 1] = nil
+end
+
+local function collect_rects(node, rects)
+  if not node then
+    return
+  end
+  if node.split then
+    collect_rects(node.split.before, rects)
+    collect_rects(node.split.after, rects)
+  elseif node.block_id then
+    rects[node.block_id] = node.rect
+  end
+end
+
+-- Select only from the active window snapshot, without changing history.
+local function select_target(window, source_id, direction, recent)
+  local axis = direction_axes[direction]
+  if not axis or window.zoomed_block_id then
+    return
+  end
+
+  local rects = {}
+  for _, layer in ipairs(window.layers or {}) do
+    if layer.kind == "tiled" then
+      collect_rects(layer.layout, rects)
+      break
+    end
+  end
+  local source = rects[source_id]
+  if not source then
+    return
+  end
+
+  local cross = 3 - axis
+  local negative = direction == "left" or direction == "up"
+  for _, id in ipairs(recent) do
+    local target = rects[id]
+    if id ~= source_id and target then
+      local before, after = source, target
+      if negative then
+        before, after = target, source
+      end
+      local gap = after[axis] - (before[axis] + before[axis + 2])
+      local overlap = math.min(source[cross] + source[cross + 2], target[cross] + target[cross + 2])
+        - math.max(source[cross], target[cross])
+      if math.abs(gap) <= edge_tolerance and overlap > 0 then
+        return id
+      end
     end
   end
 end
 
 --- Move pane focus from ctx.block_id in `direction`. Does nothing unless the
 --- source is the focused block of the active window, so a stale or repeated
---- handoff cannot move focus from the wrong pane. Raises on API errors.
+--- handoff cannot move focus from the wrong pane. Raises if reading the
+--- view or native directional focus fails.
 function M.navigate(ctx, direction)
   if type(ctx) ~= "table" or not ctx.session_id or not ctx.block_id then
     return
@@ -59,8 +125,21 @@ function M.navigate(ctx, direction)
   if not view then
     error(("rex-navigator: session.view failed: %s"):format(tostring(err)), 0)
   end
-  if active_focused_block(view) ~= ctx.block_id then
+  local window = active_window(view)
+  if not window or window.focused_block_id ~= ctx.block_id then
     return
+  end
+
+  remember(ctx.block_id)
+  local target = select_target(window, ctx.block_id, direction, history)
+  if target then
+    local called, focused = pcall(rex.session.focus_block, {
+      session_id = ctx.session_id,
+      block_id = target,
+    })
+    if called and focused then
+      return
+    end
   end
 
   -- Pass wrap explicitly: servers that ignore it always wrap.

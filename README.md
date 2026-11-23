@@ -53,7 +53,9 @@ Open Neovim inside Rex and run `:checkhealth rex-navigator`.
 | Neovim | Move between splits in normal mode. At the edge of the Neovim layout, move to the next Rex pane. |
 | Shell, Vim, or another program | Move between Rex panes. |
 
-Focus stops at the outer edge of the Rex layout.
+If more than one tiled pane borders the current pane in that direction, the plugin prefers the one you most recently left through the plugin. For example, put Pane 1 on the left and stack Panes 2 and 3 on the right. From Pane 3, press `ctrl+h` to move to Pane 1, then `ctrl+l` to return to Pane 3.
+
+If no pane from history matches, Rex chooses the next pane. Focus does not wrap. See `:h rex-navigator-mru` for details.
 
 
 ## Development

@@ -12,6 +12,7 @@ CONTENTS                                                *rex-navigator-contents*
   4. Mappings ............................... |rex-navigator-mappings|
   5. Health ................................. |rex-navigator-health|
   6. Development ............................ |rex-navigator-development|
+  7. MRU pane navigation ..................... |rex-navigator-mru|
 
 ==============================================================================
 1. INTRODUCTION                                     *rex-navigator-introduction*
@@ -37,10 +38,10 @@ It is a two-sided handshake:
 
                                                      *rex-navigator-pane-navigation*
 Pane navigation moves focus only when the source block is still the focused
-block of the active window. A stale or repeated handoff does nothing. It then
-calls `session.focus_direction` with `wrap = false`, so focus stops at the
-outer layout edge. A failed API call raises an error, so `rex do` exits
-nonzero and Neovim reports it.
+block of the active window. A stale or repeated handoff does nothing. The
+plugin prefers nearby panes from its history. See |rex-navigator-mru|.
+If the plugin cannot read the layout or native focus fails, `rex do` exits
+with an error and Neovim reports it.
 
 Detection reads the foreground process name only. It matches `nvim` and
 `nvimdiff`, regardless of case, with an optional leading `.` and trailing
@@ -159,5 +160,39 @@ This action moves focus without sending a key to the pane. To test with a
 separate configuration file without reloading Rex, use: >sh
     rex do ./my-init.lua --action rex_navigator_right -b <block>
 <
+
+==============================================================================
+7. MRU PANE NAVIGATION                                       *rex-navigator-mru*
+
+MRU means most recently used. The plugin remembers the pane that requests
+each move, not the pane that receives focus.
+
+Selection ~
+    Put a tall Pane 1 on the left. Stack Panes 2 and 3 on the right.
+    From Pane 3, press `ctrl+h` to move to Pane 1. Then press `ctrl+l`
+    to return to Pane 3 instead of moving to Pane 2. A move from the
+    edge of the Neovim layout uses the same history.
+
+    A pane must share part of the source pane's edge in the requested
+    direction. A gap or contact at only a corner does not count. The
+    newest eligible pane in history wins, even if another shares more
+    of the edge. The source pane, closed panes, floating panes, and
+    panes in other Rex windows cannot win.
+
+History ~
+    When the source pane still has focus, the plugin records it before
+    the move. This includes requests that fail or stop at a layout edge.
+    A request from a pane that lost focus does not change history.
+
+    Key forwarding, moves between Neovim splits, mouse clicks, and Rex's
+    own focus commands do not change history. The plugin keeps the last
+    256 distinct source panes in memory. Reloading the Rex configuration
+    or restarting the server clears history.
+
+Fallback ~
+    Rex chooses the next pane if there is no match, if the source floats,
+    if the window is zoomed, or if focus on the chosen pane fails. The
+    fallback calls `session.focus_direction` with `wrap = false`. Focus
+    does not wrap or move to another Rex window.
 
  vim:tw=78:ts=8:ft=help:norl:
