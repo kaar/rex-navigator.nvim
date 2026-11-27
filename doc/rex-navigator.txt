@@ -31,7 +31,7 @@ It is a two-sided handshake:
   Other processes, including Vim, get pane navigation.
 - The Neovim half tries Neovim windows first. At the layout edge, it
   asynchronously runs >sh
-    rex --autostart=false do -s $REX_SESSION -b $REX_BLOCK rex_navigator_<dir>
+    rex --autostart=false do -b "$REX_BLOCK" rex_navigator_<dir>
 <
   The action only performs pane navigation and never passes keys through.
   This prevents a loop back into Neovim.
@@ -48,12 +48,11 @@ Detection reads the foreground process name only. It matches `nvim` and
 `-wrapped`. A failed process lookup counts as "not Neovim".
 Launch Neovim directly or with `exec` so it is the foreground process.
 
-The plugin is a no-op unless nvim runs inside a Rex pane ($REX_SESSION and
-$REX_BLOCK are nonempty).
-
-Note: tmux inside a Rex pane is not supported. Rex owns the `ctrl+h/j/k/l`
-chords and passes them only to Neovim, so they never reach a nested
-tmux session (or vim-tmux-navigator inside it).
+The plugin loads its mappings only when $REX_BLOCK is set.
+Rex sets $REX_BLOCK in each terminal and uses it to find the current session.
+The plugin does not need $REX_SESSION, which Rex no longer sets in new panes.
+See Command Targets in the Rex CLI guide:
+https://www.superlogical.com/rex/docs/automate/cli#command-targets
 
 ==============================================================================
 2. REQUIREMENTS                                     *rex-navigator-requirements*
@@ -119,8 +118,7 @@ Run `:checkhealth rex-navigator`.
 
 The health check reports:
 
-- whether the plugin is active ($REX_SESSION and $REX_BLOCK), with a
-  warning when $TMUX is set,
+- whether the plugin is active ($REX_BLOCK),
 - whether `rex` is executable on Neovim's $PATH,
 - whether the server answers `rex --autostart=false whoami --json`,
 - whether `rex --autostart=false actions` lists the four

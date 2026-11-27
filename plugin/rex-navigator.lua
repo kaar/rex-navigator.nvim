@@ -5,8 +5,8 @@ if vim.g.loaded_rex_navigator then
 end
 vim.g.loaded_rex_navigator = 1
 
--- No-op outside Rex. Edge handoffs need both IDs to target the source pane.
-if (vim.env.REX_SESSION or "") == "" or (vim.env.REX_BLOCK or "") == "" then
+-- No-op outside Rex. REX_BLOCK identifies the source pane.
+if (vim.env.REX_BLOCK or "") == "" then
   return
 end
 

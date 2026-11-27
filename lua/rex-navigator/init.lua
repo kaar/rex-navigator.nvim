@@ -21,8 +21,6 @@ function M.command(direction)
     "rex",
     "--autostart=false",
     "do",
-    "-s",
-    vim.env.REX_SESSION or "",
     "-b",
     vim.env.REX_BLOCK or "",
     "rex_navigator_" .. direction,

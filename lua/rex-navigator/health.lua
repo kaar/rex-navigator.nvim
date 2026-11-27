@@ -50,18 +50,12 @@ end
 function M.check()
   vim.health.start("rex-navigator")
 
-  local active = (vim.env.REX_SESSION or "") ~= "" and (vim.env.REX_BLOCK or "") ~= ""
-  if active then
-    vim.health.ok(("Running inside Rex (REX_SESSION=%s, REX_BLOCK=%s)"):format(vim.env.REX_SESSION, vim.env.REX_BLOCK))
+  local block = vim.env.REX_BLOCK or ""
+  if block ~= "" then
+    vim.health.ok(("Running inside Rex (REX_BLOCK=%s)"):format(block))
   else
-    vim.health.warn("REX_SESSION or REX_BLOCK is empty. Not inside a Rex pane, plugin is inactive", {
+    vim.health.warn("REX_BLOCK is not set. The plugin is inactive", {
       "Start Neovim inside a Rex pane to activate the mappings.",
-    })
-  end
-
-  if vim.env.TMUX then
-    vim.health.warn("$TMUX is set. tmux inside a Rex pane is not supported", {
-      "Rex owns the ctrl+h/j/k/l chords and passes them only to Neovim in the pane, not to tmux.",
     })
   end
 
@@ -74,7 +68,7 @@ function M.check()
     return
   end
 
-  if not active then
+  if block == "" then
     return
   end
 
